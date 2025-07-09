@@ -1,0 +1,77 @@
+#Model-1
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+# Load and preprocess
+df = pd.read_csv("/dataset_comp.csv")
+df['Timestamp'] = pd.to_datetime(df['LastUpdatedDate'] + ' ' +
+df['LastUpdatedTime'], format='%d-%m-%Y %H:%M:%S')
+df.sort_values(by=['SystemCodeNumber', 'Timestamp'], inplace=True)
+df['OccupancyRate'] = df['Occupancy'] / df['Capacity']
+# Dynamic pricing
+base_price, alpha = 10.0, 2.0
+df['BaselinePrice'] = base_price
+for lot in df['SystemCodeNumber'].unique():
+     lot_df = df[df['SystemCodeNumber'] == lot].copy()
+     prices = [base_price]
+     for i in range(1, len(lot_df)):
+          prev = prices[-1]
+          occ = lot_df.iloc[i - 1]['OccupancyRate']
+          prices.append(np.clip(prev + alpha * occ, base_price * 0.5, base_price* 2))
+     df.loc[df['SystemCodeNumber'] == lot, 'BaselinePrice'] = prices
+# Plot for one lot
+
+lot = df['SystemCodeNumber'].unique()[0]
+plot_df = df[df['SystemCodeNumber'] == lot]
+plt.figure(figsize=(12, 5))
+plt.plot(plot_df['Timestamp'], plot_df['BaselinePrice'],
+label='Baseline Price')
+plt.title(f'Price Trend – Lot: {lot}')
+plt.xlabel("Time")
+plt.ylabel("Price (\$)")
+plt.xticks(rotation=45)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+---------------------------------------------------------------------------------------------------------
+Model-2
+# @title
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+# Feature weights
+α, β, γ, δ, ε, λ = 1.0, 0.5, 0.8, 1.0, 0.6, 0.5
+traffic_map = {"low": 1, "medium": 2, "high": 3}
+vehicle_map = {"bike": 1, "car": 2, "truck": 3}
+# Encode and compute demand
+df['TrafficLevel'] = df['TrafficConditionNearby'].map(traffic_map)
+df['VehicleTypeWeight'] = df['VehicleType'].map(vehicle_map)
+df['DemandScore'] = (
+α * df['OccupancyRate'] +
+β * df['QueueLength'] -
+γ * df['TrafficLevel'] +
+δ * df['IsSpecialDay'] +
+ε * df['VehicleTypeWeight']
+)
+# Normalize demand and calculate price
+df['DemandScoreNorm'] = df.groupby('SystemCodeNumber')['DemandScore'].transform(lambda x: (x - x.mean()) / (x.std() + 1e-6))
+base_price = 10.0
+df['DemandPrice'] = (base_price * (1 + λ * df['DemandScoreNorm'])).clip(5, 20)
+# Plot
+lot = df['SystemCodeNumber'].unique()[0]
+plot_df = df[df['SystemCodeNumber'] == lot]
+plt.figure(figsize=(12, 5))
+plt.plot(plot_df['Timestamp'], plot_df['DemandPrice'], label='Demand-Based Price', color='orange')
+plt.title(f'Demand-Based Price Trend – Lot: {lot}')
+plt.xlabel("Time")
+plt.ylabel("Price ($)")
+plt.xticks(rotation=45)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
